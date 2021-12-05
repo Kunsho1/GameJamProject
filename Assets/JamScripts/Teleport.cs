@@ -7,41 +7,42 @@ public class Teleport : MonoBehaviour
     [SerializeField] private KeyCode _activationKey = KeyCode.F;
     [SerializeField] private KeyCode _moveLeftMirror = KeyCode.Comma;
     [SerializeField] private KeyCode _moveRightMirror = KeyCode.Period;
+    [SerializeField] private KeyCode _meeleAtack = KeyCode.K;
     [SerializeField] private float _movingSpeedMirror = 10.0f;
     [SerializeField] private GameObject _mirrorObject;
-    [SerializeField] private GameObject _stickObject;
     [SerializeField] private float _maxCameraOffset = 10.0f;
     [SerializeField] private float _minCameraOffset = -10.0f;
+    [SerializeField] private Color _normalColor = Color.white;
+    [SerializeField] private Color _redColor = Color.red;
+    [SerializeField] private float _attackDelay = 0.1f;
 
     private Transform _player;
     private Transform _mirror;
-    private Transform _stick;
     private Vector3 _mirrorPositionOffset;
-    private bool _playerFacesRight;
+    private bool _playerFacesRight = true;
 
-    private Transform _mainCameraTransform;
-    private const string _mainCamera = "MainCamera";
     private PlayerCharacter _playerCharacter;
     private SpriteRenderer _spriteRendererPlayer;
     private SpriteRenderer _spriteRendererMirror;
+    private MirrorView _mirrorView;
+
+    private bool _mirrorInBlockage;
+    private float _attackCooldown;
 
     private void Start()
     {
-        _player = transform;
-        
         _playerCharacter = GetComponent<PlayerCharacter>();
-        
+
+        _player = transform;
         _mirror = Instantiate(_mirrorObject).transform;
-        _mirror.position = _player.position;
-
-        _stick = Instantiate(_stickObject).transform;
-
-        _mainCameraTransform = GameObject.Find(_mainCamera).transform;
-        if (_mainCameraTransform == null) Debug.Log("камера не нашлась");
-        UpdateStickPosition();
 
         _spriteRendererPlayer = GetComponent<SpriteRenderer>();
-        _spriteRendererMirror = _mirror.GetComponent<MirrorView>().SpriteRenderer;
+        _mirrorView = _mirror.GetComponent<MirrorView>();
+        _spriteRendererMirror = _mirrorView.SpriteRenderer;
+
+        _mirrorView.OnMirrorInBlockage += OnMirronInBlockage;
+        _mirrorView.AttackPoint.gameObject.SetActive(false);
+        UpdateMirrorPosition();
     }
 
     private void Update()
@@ -57,16 +58,17 @@ public class Teleport : MonoBehaviour
             _playerFacesRight = false;
         }
 
-        if (Input.GetKeyDown(_activationKey))
+        if (Input.GetKeyDown(_activationKey) && !_mirrorInBlockage)
         {
             _player.position = _mirror.position;
+            TurnAroundSystem();
         }
 
         if (Input.GetKey(_moveLeftMirror))
         {
             if (_playerFacesRight)
             {
-                MoveMirrirLeft();
+                MoveMirrorLeft();
             }
             else
             {
@@ -82,16 +84,20 @@ public class Teleport : MonoBehaviour
             }
             else
             {
-                MoveMirrirLeft();
+                MoveMirrorLeft();
             }
         }
 
-        void MoveMirrirLeft()
+        if (Input.GetKeyDown(_meeleAtack) && _attackCooldown <= 0)
+        {
+            _attackCooldown = _attackDelay;
+        }
+        
+        void MoveMirrorLeft()
         {
             _playerCharacter.cameraHorizontalFacingOffset -= _movingSpeedMirror * Time.deltaTime;
             if (_playerCharacter.cameraHorizontalFacingOffset < _minCameraOffset)
                 _playerCharacter.cameraHorizontalFacingOffset = _minCameraOffset;
-            _mirrorPositionOffset.x = _playerCharacter.cameraHorizontalFacingOffset;
         }
 
         void MoveMirrorRight()
@@ -99,7 +105,6 @@ public class Teleport : MonoBehaviour
             _playerCharacter.cameraHorizontalFacingOffset += _movingSpeedMirror * Time.deltaTime;
             if (_playerCharacter.cameraHorizontalFacingOffset > _maxCameraOffset)
                 _playerCharacter.cameraHorizontalFacingOffset = _maxCameraOffset;
-            _mirrorPositionOffset.x = _playerCharacter.cameraHorizontalFacingOffset;
         }
     }
 
@@ -114,8 +119,19 @@ public class Teleport : MonoBehaviour
             _mirror.position = _player.position - _mirrorPositionOffset;
         }
 
-        UpdateStickPosition();
         _spriteRendererMirror.sprite = _spriteRendererPlayer.sprite;
+
+        if(_mirrorInBlockage)
+        {
+            _spriteRendererMirror.color = _redColor;
+        }
+        else
+        {
+            _spriteRendererMirror.color = _normalColor;
+        }
+
+        UpdateMirrorPosition();
+        MirrorAttack();
     }
 
     private void TurnAroundSystem()
@@ -124,9 +140,51 @@ public class Teleport : MonoBehaviour
         _mirrorPositionOffset.x = _playerCharacter.cameraHorizontalFacingOffset;
     }
 
-    private void UpdateStickPosition()
+    private void UpdateMirrorPosition()
     {
-        Vector3 stickPosition = new Vector3(_mainCameraTransform.position.x, _mainCameraTransform.position.y, _player.position.z);
-        _stick.position = stickPosition;
+        _mirrorPositionOffset.x = _playerCharacter.cameraHorizontalFacingOffset;
+        Vector3 currentScale = _mirror.localScale;
+        if (_playerFacesRight)
+        {
+            currentScale.x = 1;
+        }
+        else
+        {
+            currentScale.x = -1;
+        }
+        _mirror.localScale = currentScale;
+    }
+
+    private void OnMirronInBlockage(bool value)
+    {
+        if (value)
+        {
+            _mirrorInBlockage = true;
+        }
+        else
+        {
+            _mirrorInBlockage = false;
+        }
+    }
+
+    private void MirrorAttack()
+    {
+        if(_attackCooldown > 0)
+        {
+            _attackCooldown -= Time.deltaTime;
+            if(_attackCooldown <= 0)
+            {
+                _mirrorView.AttackPoint.gameObject.SetActive(true);
+            }
+        }
+        else
+        {
+            _mirrorView.AttackPoint.gameObject.SetActive(false);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        _mirrorView.OnMirrorInBlockage -= OnMirronInBlockage;
     }
 }
